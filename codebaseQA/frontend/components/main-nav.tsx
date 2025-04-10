@@ -2,8 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Github, Search } from "lucide-react"
-
+import { Github, Search, BarChart2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -43,7 +42,18 @@ export function MainNav() {
           <Github className="mr-2 h-4 w-4" />
           GitHub Projects
         </Link>
+        <Link
+          href="/repo-analytics"
+          className={cn(
+            "flex items-center text-sm font-medium transition-colors hover:text-primary",
+            pathname === "/repo-analytics"
+              ? "text-foreground"
+              : "text-muted-foreground"
+          )}
+        >
+          <BarChart2 className="mr-2 h-4 w-4" />
+          Repo Analytics
+        </Link>
       </nav>
     </div>
   )
-}
