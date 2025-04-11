@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Github, Search, BarChart2, Network } from "lucide-react"
+import { Github, Search, BarChart2, Network, Share2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -65,6 +65,18 @@ export function MainNav() {
         >
           <Network className="mr-2 h-4 w-4" />
           Code Visualizations
+        </Link>
+        <Link
+          href="/knowledge-transfer"
+          className={cn(
+            "flex items-center text-sm font-medium transition-colors hover:text-primary",
+            pathname === "/knowledge-transfer"
+              ? "text-foreground"
+              : "text-muted-foreground"
+          )}
+        >
+          <Share2 className="mr-2 h-4 w-4" />
+          Knowledge Transfer
         </Link>
       </nav>
     </div>
