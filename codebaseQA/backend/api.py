@@ -722,3 +722,9 @@ if __name__ == "__main__":
         # Run the FastAPI app locally with uvicorn
         print("Starting local API server at http://localhost:8000")
         uvicorn.run(fastapi_app, host="0.0.0.0", port=8000)
+
+# Import visualization API router
+from visualization_api import router as visualization_router
+
+# Add visualization router to FastAPI app
+fastapi_app.include_router(visualization_router, prefix="/visualize", tags=["visualizations"])
