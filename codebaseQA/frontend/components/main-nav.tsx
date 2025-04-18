@@ -83,6 +83,17 @@ export function MainNav() {
         >
           Codegen Chat
         </Link>
+        <Link
+          href="/codebase-modifier"
+          className={cn(
+            "transition-colors hover:text-foreground/80",
+            pathname?.startsWith("/codebase-modifier")
+              ? "text-foreground"
+              : "text-foreground/60"
+          )}
+        >
+          Codebase Modifier
+        </Link>
       </nav>
     </div>
   )
