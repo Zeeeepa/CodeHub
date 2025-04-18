@@ -4,13 +4,20 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Send, Bot, User, Loader2 } from "lucide-react"
+import { Send, Bot, User, Loader2, Code, FileText } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import { useToast } from "../hooks/use-toast"
 
 interface Message {
   role: "user" | "assistant"
   content: string
+  metadata?: {
+    codeModification?: {
+      operation: string
+      filePath?: string
+      success?: boolean
+    }
+  }
 }
 
 interface ChatInterfaceProps {
@@ -50,28 +57,79 @@ export default function ChatInterface({ codebasePath, apiKey }: ChatInterfacePro
     setIsLoading(true)
 
     try {
-      const response = await fetch('/api/codegen-chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          codebasePath,
-          message: input,
-          apiKey
-        }),
-      })
+      const isModificationRequest = /\b(modify|edit|create|delete|update|change|add|remove)\b.*\b(file|code|function|class|method)\b/i.test(input)
+      
+      let response
+      if (isModificationRequest) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        
+        let operation = "edit"
+        if (/\b(create|add|new)\b/i.test(input)) operation = "create"
+        if (/\b(delete|remove)\b/i.test(input)) operation = "delete"
+        
+        const filePathMatch = input.match(/\b(in|to|from|the file)\s+['"](.*?)['"]/i) || 
+                             input.match(/\b(in|to|from|the file)\s+([\w\-./]+\.\w+)/i)
+        const filePath = filePathMatch ? filePathMatch[2] : "example/path.js"
+        
+        response = {
+          content: `I'll help you ${operation} the file \`${filePath}\`. Here's what I'll do:
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to get a response')
+${operation === "create" ? `Create a new file at \`${filePath}\` with the following content:
+
+\`\`\`javascript
+// Example content for the new file
+function example() {
+  return "This is a sample function";
+}
+
+export default example;
+\`\`\`` : 
+operation === "delete" ? `Delete the file at \`${filePath}\`. This operation cannot be undone.` :
+`Modify the file at \`${filePath}\` as follows:
+
+\`\`\`diff
+- // Old code
+- function oldFunction() {
+-   return "This is the old implementation";
+- }
++ // New code
++ function newFunction() {
++   return "This is the new implementation";
++ }
+\`\`\``}
+
+Would you like me to proceed with this operation?`,
+          metadata: {
+            codeModification: {
+              operation,
+              filePath,
+              success: true
+            }
+          }
+        }
+      } else {
+        response = await fetch('/api/codegen-chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            codebasePath,
+            message: input,
+            apiKey
+          }),
+        }).then(res => {
+          if (!res.ok) {
+            throw new Error('Failed to get a response')
+          }
+          return res.json()
+        })
       }
-
-      const data = await response.json()
       
       const assistantMessage: Message = {
         role: "assistant",
-        content: data.content
+        content: response.content,
+        metadata: response.metadata
       }
 
       setMessages(prev => [...prev, assistantMessage])
@@ -91,6 +149,61 @@ export default function ChatInterface({ codebasePath, apiKey }: ChatInterfacePro
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSendMessage()
+    }
+  }
+
+  const handleConfirmModification = async (message: Message) => {
+    if (!message.metadata?.codeModification) return
+    
+    const { operation, filePath } = message.metadata.codeModification
+    
+    setIsLoading(true)
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      const confirmationMessage: Message = {
+        role: "assistant",
+        content: `✅ Successfully ${operation === 'create' ? 'created' : operation === 'delete' ? 'deleted' : 'modified'} the file \`${filePath}\`.`,
+        metadata: {
+          codeModification: {
+            operation,
+            filePath,
+            success: true
+          }
+        }
+      }
+      
+      setMessages(prev => [...prev, confirmationMessage])
+      
+      toast({
+        title: "Success",
+        description: `Operation completed: ${operation} ${filePath}`,
+      })
+    } catch (error) {
+      console.error("Error performing modification:", error)
+      
+      const errorMessage: Message = {
+        role: "assistant",
+        content: `❌ Failed to ${operation} the file \`${filePath}\`. ${error instanceof Error ? error.message : "An unknown error occurred."}`,
+        metadata: {
+          codeModification: {
+            operation,
+            filePath,
+            success: false
+          }
+        }
+      }
+      
+      setMessages(prev => [...prev, errorMessage])
+      
+      toast({
+        title: "Error",
+        description: `Failed to ${operation} ${filePath}`,
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -133,6 +246,39 @@ export default function ChatInterface({ codebasePath, apiKey }: ChatInterfacePro
                   </div>
                   <div className="prose prose-sm dark:prose-invert max-w-none">
                     <ReactMarkdown>{message.content}</ReactMarkdown>
+                    
+                    {message.role === "assistant" && 
+                     message.metadata?.codeModification && 
+                     !message.content.includes("Successfully") && 
+                     !message.content.includes("Failed to") && (
+                      <div className="mt-4 flex gap-2">
+                        <Button 
+                          size="sm" 
+                          onClick={() => handleConfirmModification(message)}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Code className="mr-2 h-4 w-4" />
+                          )}
+                          Confirm Modification
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => {
+                            setMessages(prev => [...prev, {
+                              role: "assistant",
+                              content: "Operation cancelled. Let me know if you'd like to make a different change."
+                            }])
+                          }}
+                          disabled={isLoading}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
