@@ -7,12 +7,12 @@ const API_URL = process.env.NODE_ENV === 'development'
 
 export async function POST(req: NextRequest) {
   try {
-    const { codebasePath, message, apiKey } = await req.json()
+    const { codebasePath, filePath, apiKey } = await req.json()
 
     // Validate required fields
-    if (!codebasePath || !message) {
+    if (!codebasePath) {
       return NextResponse.json(
-        { error: 'Missing required fields: codebasePath and message are required' },
+        { error: 'Missing required field: codebasePath is required' },
         { status: 400 }
       )
     }
@@ -37,15 +37,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Call the Codegen API
-    const response = await fetch(`${API_URL}/codegen-chat`, {
+    const response = await fetch(`${API_URL}/dead-code`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         repo_name: repoName,
-        message: message,
-        api_key: apiKey
+        file_path: filePath || null
       }),
     })
 

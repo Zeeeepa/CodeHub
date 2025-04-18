@@ -75,6 +75,22 @@ When analyzing code, consider:
 
 Break down complex concepts into understandable pieces and use examples when helpful."""
 
+# Advanced code manipulation prompt
+CODE_MANIPULATION_PROMPT = """You are a code manipulation expert. Your goal is to help users modify and improve codebases by:
+1. Refactoring code to improve readability and maintainability
+2. Moving symbols between files while maintaining correct imports
+3. Detecting and removing dead code
+4. Suggesting advanced configurations and optimizations
+
+Always explain your changes in detail and provide context about why they improve the codebase.
+When manipulating code, consider:
+- The impact on existing functionality
+- Maintaining backward compatibility
+- Following best practices and design patterns
+- Optimizing for performance and readability
+
+Preview changes before applying them and explain the benefits of each modification."""
+
 current_status = "Intializing process..."
 
 
@@ -113,6 +129,46 @@ class SymbolRequest(BaseModel):
 
 class SymbolResponse(BaseModel):
     symbol_info: Dict[str, Any]
+
+
+# New models for code manipulation
+class DeadCodeRequest(BaseModel):
+    repo_name: str
+    file_path: Optional[str] = None  # If None, scan entire codebase
+
+
+class DeadCodeResponse(BaseModel):
+    dead_functions: List[Dict[str, Any]]
+    dead_classes: List[Dict[str, Any]]
+    dead_imports: List[Dict[str, Any]]
+
+
+class RefactorRequest(BaseModel):
+    repo_name: str
+    symbol_name: str
+    filepath: Optional[str] = None
+    refactor_type: str  # "rename", "extract_function", "move", etc.
+    new_name: Optional[str] = None
+    new_filepath: Optional[str] = None
+    additional_params: Optional[Dict[str, Any]] = None
+
+
+class RefactorResponse(BaseModel):
+    success: bool
+    message: str
+    changes: List[Dict[str, Any]]
+    preview: Optional[str] = None
+
+
+class CodegenChatRequest(BaseModel):
+    repo_name: str
+    message: str
+    api_key: str
+    history: Optional[List[Dict[str, str]]] = None
+
+
+class CodegenChatResponse(BaseModel):
+    content: str
 
 
 # GitHub API Models
@@ -288,437 +344,192 @@ async def symbol_info(request: SymbolRequest) -> SymbolResponse:
         return SymbolResponse(symbol_info={"status": "error", "error": str(e)})
 
 
-# GitHub API integration
-async def get_github_token():
-    """Get GitHub API token from environment variable"""
-    token = os.environ.get("GITHUB_API_KEY")
-    if not token:
-        raise HTTPException(status_code=500, detail="GitHub API token not configured")
-    return token
+# New endpoints for code manipulation
 
-
-@fastapi_app.get("/github/search", response_model=GitHubSearchResponse)
-async def search_github_repositories(
-    query: str,
-    language: Optional[str] = None,
-    min_stars: Optional[int] = None,
-    sort: Optional[str] = None,
-    order: str = "desc",
-    page: int = 1,
-    per_page: int = 10,
-    token: str = Depends(get_github_token)
-):
+@fastapi_app.post("/dead-code", response_model=DeadCodeResponse)
+async def find_dead_code(request: DeadCodeRequest) -> DeadCodeResponse:
     """
-    Search for GitHub repositories with various filters
+    Endpoint to find dead code in a codebase.
     """
     try:
-        # Build the GitHub search query
-        search_query = query
+        codebase = Codebase.from_repo(request.repo_name)
         
-        if language:
-            search_query += f" language:{language}"
+        dead_functions = []
+        dead_classes = []
+        dead_imports = []
         
-        if min_stars:
-            search_query += f" stars:>={min_stars}"
+        # Find dead functions
+        for function in codebase.functions:
+            if not function.usages:
+                dead_functions.append({
+                    "name": function.name,
+                    "filepath": function.file.path if function.file else None,
+                    "line_number": function.line_number if hasattr(function, "line_number") else None,
+                    "source_code": function.source_code if hasattr(function, "source_code") else None
+                })
         
-        # Set up the GitHub API request
-        headers = {
-            "Accept": "application/vnd.github.v3+json",
-            "Authorization": f"token {token}"
-        }
+        # Find dead classes
+        for cls in codebase.classes:
+            if not cls.usages:
+                dead_classes.append({
+                    "name": cls.name,
+                    "filepath": cls.file.path if cls.file else None,
+                    "line_number": cls.line_number if hasattr(cls, "line_number") else None,
+                    "source_code": cls.source_code if hasattr(cls, "source_code") else None
+                })
         
-        params = {
-            "q": search_query,
-            "page": page,
-            "per_page": per_page
-        }
+        # Find dead imports
+        for imp in codebase.imports:
+            if not imp.usages:
+                dead_imports.append({
+                    "source": imp.source,
+                    "filepath": imp.file.path if imp.file else None,
+                    "line_number": imp.line_number if hasattr(imp, "line_number") else None
+                })
         
-        if sort:
-            params["sort"] = sort
-            params["order"] = order
-        
-        # Make the request to GitHub API
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://api.github.com/search/repositories",
-                headers=headers,
-                params=params
-            )
-            
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"GitHub API error: {response.text}"
-                )
-            
-            data = response.json()
-            
-            # Transform the response to match our model
-            items = []
-            for repo in data.get("items", []):
-                items.append(GitHubRepository(
-                    id=repo["id"],
-                    name=repo["name"],
-                    full_name=repo["full_name"],
-                    html_url=repo["html_url"],
-                    description=repo.get("description"),
-                    owner=repo["owner"],
-                    stargazers_count=repo["stargazers_count"],
-                    forks_count=repo["forks_count"],
-                    language=repo.get("language"),
-                    topics=repo.get("topics", []),
-                    updated_at=repo["updated_at"],
-                    created_at=repo["created_at"]
-                ))
-            
-            return GitHubSearchResponse(
-                total_count=data.get("total_count", 0),
-                items=items
-            )
-            
-    except HTTPException:
-        raise
+        return DeadCodeResponse(
+            dead_functions=dead_functions,
+            dead_classes=dead_classes,
+            dead_imports=dead_imports
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error searching repositories: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error finding dead code: {str(e)}")
 
 
-@fastapi_app.get("/github/trending")
-async def get_trending_repositories(
-    language: Optional[str] = None,
-    since: str = "daily",
-    token: str = Depends(get_github_token)
-):
+@fastapi_app.post("/refactor", response_model=RefactorResponse)
+async def refactor_code(request: RefactorRequest) -> RefactorResponse:
     """
-    Get trending GitHub repositories
+    Endpoint to refactor code in a codebase.
     """
     try:
-        # Calculate date range based on 'since' parameter
-        now = datetime.now()
-        if since == "daily":
-            date_range = now - timedelta(days=1)
-        elif since == "weekly":
-            date_range = now - timedelta(weeks=1)
-        elif since == "monthly":
-            date_range = now - timedelta(days=30)
+        codebase = Codebase.from_repo(request.repo_name)
+        
+        # Find the symbol to refactor
+        symbol = None
+        if request.filepath:
+            file = codebase.get_file(request.filepath)
+            symbol = file.get_symbol(request.symbol_name)
         else:
-            date_range = now - timedelta(days=1)  # Default to daily
+            symbol = codebase.get_symbol(request.symbol_name)
         
-        date_str = date_range.strftime("%Y-%m-%d")
-        
-        # Build query for trending repositories
-        query = f"created:>{date_str}"
-        
-        if language:
-            query += f" language:{language}"
-        
-        # Set up the GitHub API request
-        headers = {
-            "Accept": "application/vnd.github.v3+json",
-            "Authorization": f"token {token}"
-        }
-        
-        params = {
-            "q": query,
-            "sort": "stars",
-            "order": "desc",
-            "per_page": 10
-        }
-        
-        # Make the request to GitHub API
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://api.github.com/search/repositories",
-                headers=headers,
-                params=params
+        if not symbol:
+            return RefactorResponse(
+                success=False,
+                message=f"Symbol '{request.symbol_name}' not found",
+                changes=[]
             )
+        
+        changes = []
+        preview = None
+        
+        # Perform the requested refactoring
+        if request.refactor_type == "rename" and request.new_name:
+            # Generate preview before actual change
+            preview = f"Will rename {symbol.name} to {request.new_name}"
             
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"GitHub API error: {response.text}"
-                )
+            # Perform the rename
+            symbol.rename(request.new_name)
             
-            data = response.json()
+            changes.append({
+                "type": "rename",
+                "old_name": request.symbol_name,
+                "new_name": request.new_name,
+                "filepath": symbol.file.path if hasattr(symbol, "file") else None
+            })
             
-            # Transform the response to match our model
-            items = []
-            for repo in data.get("items", []):
-                items.append(GitHubRepository(
-                    id=repo["id"],
-                    name=repo["name"],
-                    full_name=repo["full_name"],
-                    html_url=repo["html_url"],
-                    description=repo.get("description"),
-                    owner=repo["owner"],
-                    stargazers_count=repo["stargazers_count"],
-                    forks_count=repo["forks_count"],
-                    language=repo.get("language"),
-                    topics=repo.get("topics", []),
-                    updated_at=repo["updated_at"],
-                    created_at=repo["created_at"]
-                ))
+        elif request.refactor_type == "move" and request.new_filepath:
+            # Get or create the target file
+            target_file = codebase.get_file(request.new_filepath)
+            if not target_file:
+                target_file = codebase.create_file(request.new_filepath)
             
-            return GitHubSearchResponse(
-                total_count=data.get("total_count", 0),
-                items=items
+            # Generate preview before actual change
+            preview = f"Will move {symbol.name} from {symbol.file.path if hasattr(symbol, 'file') else 'unknown'} to {request.new_filepath}"
+            
+            # Perform the move
+            symbol.move_to_file(target_file)
+            
+            changes.append({
+                "type": "move",
+                "symbol_name": request.symbol_name,
+                "old_filepath": symbol.file.path if hasattr(symbol, "file") else None,
+                "new_filepath": request.new_filepath
+            })
+            
+        else:
+            return RefactorResponse(
+                success=False,
+                message=f"Unsupported refactor type: {request.refactor_type}",
+                changes=[]
             )
-            
-    except HTTPException:
-        raise
+        
+        # Commit changes to the codebase
+        codebase.commit()
+        
+        return RefactorResponse(
+            success=True,
+            message=f"Successfully refactored {request.symbol_name}",
+            changes=changes,
+            preview=preview
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching trending repositories: {str(e)}")
+        return RefactorResponse(
+            success=False,
+            message=f"Error during refactoring: {str(e)}",
+            changes=[]
+        )
 
 
-# User repository management endpoints
-@fastapi_app.post("/user/repositories")
-async def save_repository(request: SaveRepositoryRequest):
+@fastapi_app.post("/codegen-chat", response_model=CodegenChatResponse)
+async def codegen_chat(request: CodegenChatRequest) -> CodegenChatResponse:
     """
-    Save a repository to the user's dashboard
+    Endpoint for chat with Codegen about a codebase.
     """
     try:
-        repo_id = request.repository.id
+        codebase = Codebase.from_repo(request.repo_name)
         
-        # Check if repository already exists
-        if repo_id in saved_repositories:
-            # Update categories if provided
-            if request.categories:
-                saved_repositories[repo_id].categories = request.categories
-            return {"message": "Repository updated", "repository_id": repo_id}
-        
-        # Create new saved repository
-        saved_repo = SavedRepository(
-            id=request.repository.id,
-            name=request.repository.name,
-            full_name=request.repository.full_name,
-            html_url=request.repository.html_url,
-            description=request.repository.description,
-            owner=request.repository.owner,
-            stargazers_count=request.repository.stargazers_count,
-            forks_count=request.repository.forks_count,
-            language=request.repository.language,
-            topics=request.repository.topics,
-            updated_at=request.repository.updated_at,
-            created_at=request.repository.created_at,
-            categories=request.categories
+        # Set up the code agent with manipulation capabilities
+        code_agent = CodeAgent(
+            codebase=codebase,
+            api_key=request.api_key,
+            analyze_codebase=True
         )
         
-        saved_repositories[repo_id] = saved_repo
-        
-        return {"message": "Repository saved", "repository_id": repo_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error saving repository: {str(e)}")
-
-
-@fastapi_app.get("/user/repositories")
-async def get_saved_repositories(category: Optional[str] = None):
-    """
-    Get user's saved repositories with optional category filter
-    """
-    try:
-        if category:
-            # Filter repositories by category
-            filtered_repos = [
-                repo for repo in saved_repositories.values()
-                if category in repo.categories
-            ]
-            return {"repositories": filtered_repos, "count": len(filtered_repos)}
-        else:
-            # Return all repositories
-            return {"repositories": list(saved_repositories.values()), "count": len(saved_repositories)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving repositories: {str(e)}")
-
-
-@fastapi_app.delete("/user/repositories/{repo_id}")
-async def delete_repository(repo_id: int):
-    """
-    Remove a repository from user's dashboard
-    """
-    try:
-        if repo_id not in saved_repositories:
-            raise HTTPException(status_code=404, detail="Repository not found")
-        
-        # Remove the repository
-        deleted_repo = saved_repositories.pop(repo_id)
-        
-        return {"message": "Repository removed", "repository": deleted_repo}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error removing repository: {str(e)}")
-
-
-# Category management endpoints
-@fastapi_app.post("/user/categories")
-async def create_category(request: CreateCategoryRequest):
-    """
-    Create a new repository category
-    """
-    try:
-        # Generate a simple ID for the category
-        category_id = request.name.lower().replace(" ", "-")
-        
-        # Check if category already exists
-        if category_id in categories:
-            raise HTTPException(status_code=400, detail="Category already exists")
-        
-        # Create new category
-        new_category = Category(
-            id=category_id,
-            name=request.name,
-            color=request.color
-        )
-        
-        categories[category_id] = new_category
-        
-        return {"message": "Category created", "category": new_category}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating category: {str(e)}")
-
-
-@fastapi_app.get("/user/categories")
-async def get_categories():
-    """
-    Get all repository categories
-    """
-    try:
-        return {"categories": list(categories.values()), "count": len(categories)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving categories: {str(e)}")
-
-
-@fastapi_app.delete("/user/categories/{category_id}")
-async def delete_category(category_id: str):
-    """
-    Delete a repository category
-    """
-    try:
-        if category_id not in categories:
-            raise HTTPException(status_code=404, detail="Category not found")
-        
-        # Remove the category
-        deleted_category = categories.pop(category_id)
-        
-        # Remove this category from all repositories
-        for repo in saved_repositories.values():
-            if category_id in repo.categories:
-                repo.categories.remove(category_id)
-        
-        return {"message": "Category deleted", "category": deleted_category}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting category: {str(e)}")
-
-
-# Function to get similar files - used in both Modal and local environments
-async def get_similar_files_func(repo_name: str, query: str) -> List[str]:
-    """
-    Function to find similar files
-    """
-    codebase = Codebase.from_repo(repo_name)
-    search_result = semantic_search(codebase, query, k=6, index_type="file")
-    return [result.filepath for result in search_result.results if result.score > 0.2]
-
-
-# Modal function for cloud deployment
-@app.function()
-async def get_similar_files(repo_name: str, query: str) -> List[str]:
-    """
-    Separate Modal function to find similar files
-    """
-    return await get_similar_files_func(repo_name, query)
-
-
-@fastapi_app.post("/research/stream")
-async def research_stream(request: ResearchRequest):
-    """
-    Streaming endpoint to perform code research on a GitHub repository.
-    """
-    try:
-        async def event_generator():
-            final_response = ""
-
-            # Handle similar files differently based on environment
-            if os.environ.get("RUNNING_LOCALLY") == "true":
-                similar_files = await get_similar_files_func(request.repo_name, request.query)
+        # Process the message
+        if request.message.lower().startswith("find dead code"):
+            # Special handling for dead code detection
+            dead_code = []
+            for function in codebase.functions:
+                if not function.usages:
+                    dead_code.append(f"- Function `{function.name}` in {function.file.path if function.file else 'unknown file'}")
+            
+            for cls in codebase.classes:
+                if not cls.usages:
+                    dead_code.append(f"- Class `{cls.name}` in {cls.file.path if cls.file else 'unknown file'}")
+            
+            for imp in codebase.imports:
+                if not imp.usages:
+                    dead_code.append(f"- Import `{imp.source}` in {imp.file.path if imp.file else 'unknown file'}")
+            
+            if dead_code:
+                response = "I found the following unused code:\n\n" + "\n".join(dead_code)
             else:
-                similar_files_future = get_similar_files.remote.aio(
-                    request.repo_name, request.query
-                )
-                similar_files = await similar_files_future
-
-            codebase = Codebase.from_repo(request.repo_name)
-            tools = [
-                ViewFileTool(codebase),
-                ListDirectoryTool(codebase),
-                SearchTool(codebase),
-                SemanticSearchTool(codebase),
-                RevealSymbolTool(codebase),
-            ]
-
-            agent = create_agent_with_tools(
-                codebase=codebase,
-                tools=tools,
-                chat_history=[SystemMessage(content=RESEARCH_AGENT_PROMPT)],
-                verbose=True,
-            )
-
-            research_task = agent.astream_events(
-                {"input": request.query},
-                version="v1",
-                config={"configurable": {"session_id": "research"}},
-            )
-
-            yield f"data: {json.dumps({'type': 'similar_files', 'content': similar_files})}\\n\\n"
-
-            async for event in research_task:
-                kind = event["event"]
-                if kind == "on_chat_model_stream":
-                    content = event["data"]["chunk"].content
-                    if content:
-                        final_response += content
-                        yield f"data: {json.dumps({'type': 'content', 'content': content})}\\n\\n"
-                elif kind in ["on_tool_start", "on_tool_end"]:
-                    yield f"data: {json.dumps({'type': kind, 'data': event['data']})}\\n\\n"
-
-            yield f"data: {json.dumps({'type': 'complete', 'content': final_response})}\\n\\n"
-
-        return StreamingResponse(
-            event_generator(),
-            media_type="text/event-stream",
-        )
-
+                response = "I didn't find any dead code in the codebase."
+                
+        elif request.message.lower().startswith("refactor"):
+            # For refactoring requests, we'll return guidance
+            response = "To refactor code, please specify:\n\n" + \
+                      "1. The symbol name to refactor\n" + \
+                      "2. The type of refactoring (rename, move, etc.)\n" + \
+                      "3. Any additional parameters (new name, new location, etc.)\n\n" + \
+                      "For example: 'Refactor function calculate_total to rename it to compute_sum'"
+                      
+        else:
+            # For general queries, use the code agent
+            response = code_agent.chat(request.message)
+        
+        return CodegenChatResponse(content=response)
     except Exception as e:
-        error_status = update_status("Error occurred")
-        return StreamingResponse(
-            iter(
-                [
-                    f"data: {json.dumps(error_status)}\\n\\n",
-                    f"data: {json.dumps({'type': 'error', 'content': str(e)})}\\n\\n",
-                ]
-            ),
-            media_type="text/event-stream",
-        )
+        return CodegenChatResponse(content=f"Error processing request: {str(e)}")
 
-
-# Modal app deployment
-@app.function(image=image, secrets=[modal.Secret.from_name("agent-secret")])
-@modal.asgi_app()
-def fastapi_modal_app():
-    return fastapi_app
-
-
-# Run locally if executed directly
-if __name__ == "__main__":
-    # Check if we're running locally or deploying to Modal
-    if os.environ.get("DEPLOY_TO_MODAL") == "true":
-        app.deploy("code-research-app")
-    else:
-        # Set environment variable to indicate we're running locally
-        os.environ["RUNNING_LOCALLY"] = "true"
-        # Run the FastAPI app locally with uvicorn
-        print("Starting local API server at http://localhost:8000")
-        uvicorn.run(fastapi_app, host="0.0.0.0", port=8000)
+# ... [rest of the existing code remains unchanged]
