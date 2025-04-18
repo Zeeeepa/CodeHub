@@ -29,6 +29,29 @@ class SymbolOperationRequest(BaseModel):
     target_file: Optional[str] = None
     api_key: str
 
+class SemanticEditRequest(BaseModel):
+    codebase_path: str
+    file_path: str
+    edit_description: str
+    api_key: str
+
+class ImportOperationRequest(BaseModel):
+    codebase_path: str
+    file_path: str
+    import_source: Optional[str] = None
+    symbols: Optional[List[str]] = None
+    api_key: str
+
+class JsxComponentRequest(BaseModel):
+    codebase_path: str
+    component_name: str
+    api_key: str
+
+class CallGraphRequest(BaseModel):
+    codebase_path: str
+    function_name: str
+    api_key: str
+
 # Dependency
 def get_codegen_service(api_key: str) -> CodegenSDKService:
     return CodegenSDKService(api_key)
@@ -122,6 +145,69 @@ async def move_symbol(request: SymbolOperationRequest):
     service = get_codegen_service(request.api_key)
     try:
         result = service.move_symbol(request.codebase_path, request.symbol_name, request.target_file)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/semantic-edit")
+async def semantic_edit(request: SemanticEditRequest):
+    """Perform a semantic edit on a file."""
+    service = get_codegen_service(request.api_key)
+    try:
+        result = service.semantic_edit(request.codebase_path, request.file_path, request.edit_description)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/get-dependencies")
+async def get_dependencies(request: SymbolOperationRequest):
+    """Get dependencies of a symbol."""
+    service = get_codegen_service(request.api_key)
+    try:
+        result = service.get_dependencies(request.codebase_path, request.symbol_name)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/analyze-imports")
+async def analyze_imports(request: ImportOperationRequest):
+    """Analyze imports in a file."""
+    service = get_codegen_service(request.api_key)
+    try:
+        result = service.analyze_imports(request.codebase_path, request.file_path)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/add-import")
+async def add_import(request: ImportOperationRequest):
+    """Add an import to a file."""
+    if not request.import_source:
+        raise HTTPException(status_code=400, detail="Import source is required for add import operations")
+    
+    service = get_codegen_service(request.api_key)
+    try:
+        result = service.add_import(request.codebase_path, request.file_path, request.import_source, request.symbols)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/analyze-jsx-component")
+async def analyze_jsx_component(request: JsxComponentRequest):
+    """Analyze a JSX component."""
+    service = get_codegen_service(request.api_key)
+    try:
+        result = service.analyze_jsx_component(request.codebase_path, request.component_name)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/get-call-graph")
+async def get_call_graph(request: CallGraphRequest):
+    """Get the call graph for a function."""
+    service = get_codegen_service(request.api_key)
+    try:
+        result = service.get_call_graph(request.codebase_path, request.function_name)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
