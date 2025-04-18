@@ -5,7 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import LocalCodebaseSelector from "@/components/local-codebase-selector"
 import ApiKeyInput from "@/components/api-key-input"
 import ChatInterface from "@/components/chat-interface"
-import { Github, Code, Key } from "lucide-react"
+import CodeModification from "@/components/code-modification"
+import { Github, Code, Key, MessageSquare, Edit } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToast } from "../../hooks/use-toast"
@@ -14,6 +15,7 @@ export default function CodegenChatPage() {
   const [codebasePath, setCodebasePath] = useState<string | null>(null)
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [repoUrl, setRepoUrl] = useState("")
+  const [activeTab, setActiveTab] = useState("chat")
   const { toast } = useToast()
 
   const handleRepoSubmit = () => {
@@ -54,9 +56,14 @@ export default function CodegenChatPage() {
     }
   }
 
+  const handleOperationComplete = (result: any) => {
+    // You could update the chat with a message about the operation
+    console.log("Operation completed:", result)
+  }
+
   return (
     <div className="container mx-auto py-8 px-4">
-      <h1 className="text-3xl font-bold mb-8 text-center">Codegen Chat Interface</h1>
+      <h1 className="text-3xl font-bold mb-8 text-center">Codegen Interface</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="md:col-span-1">
@@ -130,11 +137,34 @@ export default function CodegenChatPage() {
           </div>
         </div>
         
-        <div className="md:col-span-2 h-[600px]">
-          <ChatInterface 
-            codebasePath={codebasePath} 
-            apiKey={apiKey || undefined} 
-          />
+        <div className="md:col-span-2">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="chat">
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Chat
+              </TabsTrigger>
+              <TabsTrigger value="modify">
+                <Edit className="mr-2 h-4 w-4" />
+                Modify Codebase
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="chat" className="mt-0 h-[600px]">
+              <ChatInterface 
+                codebasePath={codebasePath} 
+                apiKey={apiKey || undefined} 
+              />
+            </TabsContent>
+            
+            <TabsContent value="modify" className="mt-0">
+              <CodeModification 
+                codebasePath={codebasePath}
+                apiKey={apiKey || undefined}
+                onOperationComplete={handleOperationComplete}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>
