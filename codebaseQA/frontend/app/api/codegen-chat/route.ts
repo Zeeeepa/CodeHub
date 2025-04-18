@@ -20,32 +20,32 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // In a real implementation, this would call the Codegen API
-    // For now, we'll simulate a response
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    // Prepare the request to the backend
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000'
+    
+    // Call the backend API to process the chat message
+    const response = await fetch(`${backendUrl}/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        codebase_path: codebasePath,
+        message: message,
+        api_key: apiKey
+      }),
+    })
 
-    // Simulate API response
-    const response = {
-      content: `I've analyzed the codebase at \`${codebasePath}\` based on your query: "${message}".
-
-Here's what I found:
-
-\`\`\`python
-# Example code from the codebase
-def example_function():
-    return "This is a simulated response from the Codegen API"
-\`\`\`
-
-The codebase contains several key components that might be relevant to your question:
-
-1. Main application structure
-2. Core functionality modules
-3. Utility functions
-
-Would you like me to explain any specific part in more detail?`
+    if (!response.ok) {
+      const errorData = await response.json()
+      return NextResponse.json(
+        { error: errorData.detail || 'Backend API error' },
+        { status: response.status }
+      )
     }
 
-    return NextResponse.json(response)
+    const data = await response.json()
+    return NextResponse.json(data)
   } catch (error) {
     console.error('Error processing request:', error)
     return NextResponse.json(
