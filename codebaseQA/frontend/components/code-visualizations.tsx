@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "@/components/ui/use-toast";
 import { GitBranch, Loader2, Network, GitFork, GitMerge, GitPullRequest } from "lucide-react";
+
 interface VisualizationData {
     nodes: Array<{
         id: string;
@@ -21,6 +22,7 @@ interface VisualizationData {
         label?: string;
     }>;
 }
+
 interface KnowledgeTransferData {
     timeline: Array<{
         date: string;
@@ -42,6 +44,7 @@ interface KnowledgeTransferData {
         total_file_count: number;
     };
 }
+
 const CodeVisualizations = () => {
     const [repoUrl, setRepoUrl] = useState("");
     const [loading, setLoading] = useState(false);
@@ -51,6 +54,7 @@ const CodeVisualizations = () => {
     const [symbolName, setSymbolName] = useState("");
     const [symbolType, setSymbolType] = useState("function");
     const [activeTab, setActiveTab] = useState("code-structure");
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -70,10 +74,11 @@ const CodeVisualizations = () => {
                 requestData = {
                     repo_name: repoFullName,
                     symbol_name: symbolName,
-                    symbol_type: symbolType
+                    symbol_type: symbolType,
+                    visualization_type: visualizationType
                 };
             } else {
-                endpoint = `/api/knowledge-transfer`;
+                endpoint = `/api/visualize/knowledge-transfer`;
                 requestData = {
                     repo_name: repoFullName
                 };
@@ -96,9 +101,13 @@ const CodeVisualizations = () => {
             if (activeTab === "code-structure") {
                 setVisualizationData(data);
                 setKnowledgeTransferData(null);
+                
+                console.log("Visualization data:", data);
             } else {
                 setKnowledgeTransferData(data);
                 setVisualizationData(null);
+                
+                console.log("Knowledge transfer data:", data);
             }
 
             toast({
@@ -116,6 +125,7 @@ const CodeVisualizations = () => {
             setLoading(false);
         }
     };
+
     useEffect(() => {
         if (visualizationData && activeTab === "code-structure") {
             console.log("Visualization data:", visualizationData);
@@ -124,6 +134,7 @@ const CodeVisualizations = () => {
             // Example: renderNetworkGraph(visualizationData, "visualization-container");
         }
     }, [visualizationData, activeTab]);
+
     useEffect(() => {
         if (knowledgeTransferData && activeTab === "knowledge-transfer") {
             console.log("Knowledge transfer data:", knowledgeTransferData);
@@ -132,6 +143,7 @@ const CodeVisualizations = () => {
             // Example: renderTimelineChart(knowledgeTransferData.timeline, "timeline-container");
         }
     }, [knowledgeTransferData, activeTab]);
+
     return (
         <div className="container mx-auto py-8">
             <h1 className="text-3xl font-bold mb-6">Code Visualizations</h1>
@@ -453,4 +465,5 @@ const CodeVisualizations = () => {
         </div>
     );
 };
+
 export default CodeVisualizations;
