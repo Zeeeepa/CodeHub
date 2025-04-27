@@ -672,7 +672,7 @@ async def research_stream(request: ResearchRequest):
                 config={"configurable": {"session_id": "research"}},
             )
 
-            yield f"data: {json.dumps({'type': 'similar_files', 'content': similar_files})}\\n\\n"
+            yield f"data: {json.dumps({'type': 'similar_files', 'content': similar_files})}\n\n"
 
             async for event in research_task:
                 kind = event["event"]
@@ -680,11 +680,11 @@ async def research_stream(request: ResearchRequest):
                     content = event["data"]["chunk"].content
                     if content:
                         final_response += content
-                        yield f"data: {json.dumps({'type': 'content', 'content': content})}\\n\\n"
+                        yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
                 elif kind in ["on_tool_start", "on_tool_end"]:
-                    yield f"data: {json.dumps({'type': kind, 'data': event['data']})}\\n\\n"
+                    yield f"data: {json.dumps({'type': kind, 'data': event['data']})}\n\n"
 
-            yield f"data: {json.dumps({'type': 'complete', 'content': final_response})}\\n\\n"
+            yield f"data: {json.dumps({'type': 'complete', 'content': final_response})}\n\n"
 
         return StreamingResponse(
             event_generator(),
@@ -696,8 +696,8 @@ async def research_stream(request: ResearchRequest):
         return StreamingResponse(
             iter(
                 [
-                    f"data: {json.dumps(error_status)}\\n\\n",
-                    f"data: {json.dumps({'type': 'error', 'content': str(e)})}\\n\\n",
+                    f"data: {json.dumps(error_status)}\n\n",
+                    f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n",
                 ]
             ),
             media_type="text/event-stream",
