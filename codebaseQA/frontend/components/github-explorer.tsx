@@ -379,7 +379,7 @@ const GitHubExplorer = () => {
           <TabsTrigger value="trending">Trending</TabsTrigger>
           <TabsTrigger value="saved">My Repositories</TabsTrigger>
         </TabsList>
-
+        
         {/* Search Tab */}
         <TabsContent value="search" className="mt-4">
           <div className="flex flex-col gap-4">
